@@ -121,6 +121,7 @@ from GPT_SoVITS.TTS_infer_pack.TTS import TTS, TTS_Config
 from GPT_SoVITS.TTS_infer_pack.text_segmentation_method import get_method_names as get_cut_method_names
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
 # print(sys.path)
 i18n = I18nAuto()
 cut_method_names = get_cut_method_names()
@@ -144,6 +145,8 @@ print(tts_config)
 tts_pipeline = TTS(tts_config)
 
 APP = FastAPI()
+
+
 class TTS_Request(BaseModel):
     text: str = None
     text_lang: str = None
@@ -151,39 +154,41 @@ class TTS_Request(BaseModel):
     aux_ref_audio_paths: list = None
     prompt_lang: str = None
     prompt_text: str = ""
-    top_k:int = 5
-    top_p:float = 1
-    temperature:float = 1
-    text_split_method:str = "cut5"
-    batch_size:int = 1
-    batch_threshold:float = 0.75
-    split_bucket:bool = True
-    speed_factor:float = 1.0
-    fragment_interval:float = 0.3
-    seed:int = -1
-    media_type:str = "wav"
-    streaming_mode:bool = False
-    parallel_infer:bool = True
-    repetition_penalty:float = 1.35
+    top_k: int = 5
+    top_p: float = 1
+    temperature: float = 1
+    text_split_method: str = "cut5"
+    batch_size: int = 1
+    batch_threshold: float = 0.75
+    split_bucket: bool = True
+    speed_factor: float = 1.0
+    fragment_interval: float = 0.3
+    seed: int = -1
+    media_type: str = "wav"
+    streaming_mode: bool = False
+    parallel_infer: bool = True
+    repetition_penalty: float = 1.35
+
 
 ### modify from https://github.com/RVC-Boss/GPT-SoVITS/pull/894/files
-def pack_ogg(io_buffer:BytesIO, data:np.ndarray, rate:int):
+def pack_ogg(io_buffer: BytesIO, data: np.ndarray, rate: int):
     with sf.SoundFile(io_buffer, mode='w', samplerate=rate, channels=1, format='ogg') as audio_file:
         audio_file.write(data)
     return io_buffer
 
 
-def pack_raw(io_buffer:BytesIO, data:np.ndarray, rate:int):
+def pack_raw(io_buffer: BytesIO, data: np.ndarray, rate: int):
     io_buffer.write(data.tobytes())
     return io_buffer
 
 
-def pack_wav(io_buffer:BytesIO, data:np.ndarray, rate:int):
+def pack_wav(io_buffer: BytesIO, data: np.ndarray, rate: int):
     io_buffer = BytesIO()
     sf.write(io_buffer, data, rate, format='wav')
     return io_buffer
 
-def pack_aac(io_buffer:BytesIO, data:np.ndarray, rate:int):
+
+def pack_aac(io_buffer: BytesIO, data: np.ndarray, rate: int):
     process = subprocess.Popen([
         'ffmpeg',
         '-f', 's16le',  # 输入16位有符号小端整数PCM
@@ -200,7 +205,8 @@ def pack_aac(io_buffer:BytesIO, data:np.ndarray, rate:int):
     io_buffer.write(out)
     return io_buffer
 
-def pack_audio(io_buffer:BytesIO, data:np.ndarray, rate:int, media_type:str):
+
+def pack_audio(io_buffer: BytesIO, data: np.ndarray, rate: int, media_type: str):
     if media_type == "ogg":
         io_buffer = pack_ogg(io_buffer, data, rate)
     elif media_type == "aac":
@@ -211,7 +217,6 @@ def pack_audio(io_buffer:BytesIO, data:np.ndarray, rate:int, media_type:str):
         io_buffer = pack_raw(io_buffer, data, rate)
     io_buffer.seek(0)
     return io_buffer
-
 
 
 # from https://huggingface.co/spaces/coqui/voice-chat-with-mistral/blob/main/app.py
@@ -230,7 +235,7 @@ def wave_header_chunk(frame_input=b"", channels=1, sample_width=2, sample_rate=3
     return wav_buf.read()
 
 
-def handle_control(command:str):
+def handle_control(command: str):
     if command == "restart":
         os.execl(sys.executable, sys.executable, *argv)
     elif command == "exit":
@@ -238,38 +243,42 @@ def handle_control(command:str):
         exit(0)
 
 
-def check_params(req:dict):
-    text:str = req.get("text", "")
-    text_lang:str = req.get("text_lang", "")
-    ref_audio_path:str = req.get("ref_audio_path", "")
-    streaming_mode:bool = req.get("streaming_mode", False)
-    media_type:str = req.get("media_type", "wav")
-    prompt_lang:str = req.get("prompt_lang", "")
-    text_split_method:str = req.get("text_split_method", "cut5")
+def check_params(req: dict):
+    text: str = req.get("text", "")
+    text_lang: str = req.get("text_lang", "")
+    ref_audio_path: str = req.get("ref_audio_path", "")
+    streaming_mode: bool = req.get("streaming_mode", False)
+    media_type: str = req.get("media_type", "wav")
+    prompt_lang: str = req.get("prompt_lang", "")
+    text_split_method: str = req.get("text_split_method", "cut5")
 
     if ref_audio_path in [None, ""]:
         return JSONResponse(status_code=400, content={"message": "ref_audio_path is required"})
     if text in [None, ""]:
         return JSONResponse(status_code=400, content={"message": "text is required"})
-    if (text_lang in [None, ""]) :
+    if (text_lang in [None, ""]):
         return JSONResponse(status_code=400, content={"message": "text_lang is required"})
     elif text_lang.lower() not in tts_config.languages:
-        return JSONResponse(status_code=400, content={"message": f"text_lang: {text_lang} is not supported in version {tts_config.version}"})
-    if (prompt_lang in [None, ""]) :
+        return JSONResponse(status_code=400, content={
+            "message": f"text_lang: {text_lang} is not supported in version {tts_config.version}"})
+    if (prompt_lang in [None, ""]):
         return JSONResponse(status_code=400, content={"message": "prompt_lang is required"})
     elif prompt_lang.lower() not in tts_config.languages:
-        return JSONResponse(status_code=400, content={"message": f"prompt_lang: {prompt_lang} is not supported in version {tts_config.version}"})
+        return JSONResponse(status_code=400, content={
+            "message": f"prompt_lang: {prompt_lang} is not supported in version {tts_config.version}"})
     if media_type not in ["wav", "raw", "ogg", "aac"]:
         return JSONResponse(status_code=400, content={"message": f"media_type: {media_type} is not supported"})
-    elif media_type == "ogg" and  not streaming_mode:
+    elif media_type == "ogg" and not streaming_mode:
         return JSONResponse(status_code=400, content={"message": "ogg format is not supported in non-streaming mode"})
-    
+
     if text_split_method not in cut_method_names:
-        return JSONResponse(status_code=400, content={"message": f"text_split_method:{text_split_method} is not supported"})
+        return JSONResponse(status_code=400,
+                            content={"message": f"text_split_method:{text_split_method} is not supported"})
 
     return None
 
-async def tts_handle(req:dict):
+
+async def tts_handle(req: dict):
     """
     Text to speech handler.
     
@@ -300,7 +309,7 @@ async def tts_handle(req:dict):
     returns:
         StreamingResponse: audio stream response.
     """
-    
+
     streaming_mode = req.get("streaming_mode", False)
     return_fragment = req.get("return_fragment", False)
     media_type = req.get("media_type", "wav")
@@ -311,31 +320,34 @@ async def tts_handle(req:dict):
 
     if streaming_mode or return_fragment:
         req["return_fragment"] = True
-    
+
     try:
-        tts_generator=tts_pipeline.run(req)
-        
+        tts_generator = tts_pipeline.run(req)
+
         if streaming_mode:
-            def streaming_generator(tts_generator:Generator, media_type:str):
+            def streaming_generator(tts_generator: Generator, media_type: str):
                 if media_type == "wav":
                     yield wave_header_chunk()
                     media_type = "raw"
                 for sr, chunk in tts_generator:
                     yield pack_audio(BytesIO(), chunk, sr, media_type).getvalue()
+
             # _media_type = f"audio/{media_type}" if not (streaming_mode and media_type in ["wav", "raw"]) else f"audio/x-{media_type}"
             return StreamingResponse(streaming_generator(tts_generator, media_type, ), media_type=f"audio/{media_type}")
-    
+
         else:
             sr, audio_data = next(tts_generator)
             audio_data = pack_audio(BytesIO(), audio_data, sr, media_type).getvalue()
             return Response(audio_data, media_type=f"audio/{media_type}")
     except Exception as e:
         return JSONResponse(status_code=400, content={"message": f"tts failed", "Exception": str(e)})
-    
+
 
 import requests
 import traceback
 import time
+
+
 async def down2(ref_audio_path):
     # 如果ref_audio_path是网络文件，需要先下载到本地
     if ref_audio_path.startswith("http"):
@@ -354,12 +366,13 @@ async def down2(ref_audio_path):
             except Exception as e:
                 tb = traceback.format_exc()
                 # raise e
-                raise JSONResponse(status_code=400, content={"message": f"ref_audio_path {ref_audio_path} failed", "Exception": str(e)})
+                raise JSONResponse(status_code=400,
+                                   content={"message": f"ref_audio_path {ref_audio_path} failed", "Exception": str(e)})
         else:
-            raise JSONResponse(status_code=400, content={"message": f"ref_audio_path {ref_audio_path} failed", "Exception": str(e)})
+            raise JSONResponse(status_code=400,
+                               content={"message": f"ref_audio_path {ref_audio_path} failed", "Exception": str(e)})
         print(f"download {ref_audio_path} to {local_file_path}")
         return local_file_path
-
 
 
 @APP.get("/control")
@@ -369,30 +382,29 @@ async def control(command: str = None):
     handle_control(command)
 
 
-
 @APP.get("/tts")
 async def tts_get_endpoint(
-                        text: str = None,
-                        text_lang: str = None,
-                        ref_audio_path: str = None,
-                        aux_ref_audio_paths:list = None,
-                        prompt_lang: str = None,
-                        prompt_text: str = "",
-                        top_k:int = 5,
-                        top_p:float = 1,
-                        temperature:float = 1,
-                        text_split_method:str = "cut0",
-                        batch_size:int = 1,
-                        batch_threshold:float = 0.75,
-                        split_bucket:bool = True,
-                        speed_factor:float = 1.0,
-                        fragment_interval:float = 0.3,
-                        seed:int = -1,
-                        media_type:str = "wav",
-                        streaming_mode:bool = False,
-                        parallel_infer:bool = True,
-                        repetition_penalty:float = 1.35
-                        ):
+        text: str = None,
+        text_lang: str = None,
+        ref_audio_path: str = None,
+        aux_ref_audio_paths: list = None,
+        prompt_lang: str = None,
+        prompt_text: str = "",
+        top_k: int = 5,
+        top_p: float = 1,
+        temperature: float = 1,
+        text_split_method: str = "cut0",
+        batch_size: int = 1,
+        batch_threshold: float = 0.75,
+        split_bucket: bool = True,
+        speed_factor: float = 1.0,
+        fragment_interval: float = 0.3,
+        seed: int = -1,
+        media_type: str = "wav",
+        streaming_mode: bool = False,
+        parallel_infer: bool = True,
+        repetition_penalty: float = 1.35
+):
     req = {
         "text": text,
         "text_lang": text_lang.lower(),
@@ -404,21 +416,21 @@ async def tts_get_endpoint(
         "top_p": top_p,
         "temperature": temperature,
         "text_split_method": text_split_method,
-        "batch_size":int(batch_size),
-        "batch_threshold":float(batch_threshold),
-        "speed_factor":float(speed_factor),
-        "split_bucket":split_bucket,
-        "fragment_interval":fragment_interval,
-        "seed":seed,
-        "media_type":media_type,
-        "streaming_mode":streaming_mode,
-        "parallel_infer":parallel_infer,
-        "repetition_penalty":float(repetition_penalty)
+        "batch_size": int(batch_size),
+        "batch_threshold": float(batch_threshold),
+        "speed_factor": float(speed_factor),
+        "split_bucket": split_bucket,
+        "fragment_interval": fragment_interval,
+        "seed": seed,
+        "media_type": media_type,
+        "streaming_mode": streaming_mode,
+        "parallel_infer": parallel_infer,
+        "repetition_penalty": float(repetition_penalty)
     }
     req["ref_audio_path"] = await down2(req["ref_audio_path"])
-    
+
     return await tts_handle(req)
-                
+
 
 @APP.post("/tts")
 async def tts_post_endpoint(request: TTS_Request):
@@ -441,13 +453,13 @@ async def set_refer_aduio(refer_audio_path: str = None):
 #         # 检查文件类型，确保是音频文件
 #         if not audio_file.content_type.startswith("audio/"):
 #             return JSONResponse(status_code=400, content={"message": "file type is not supported"})
-        
+
 #         os.makedirs("uploaded_audio", exist_ok=True)
 #         save_path = os.path.join("uploaded_audio", audio_file.filename)
 #         # 保存音频文件到服务器上的一个目录
 #         with open(save_path , "wb") as buffer:
 #             buffer.write(await audio_file.read())
-            
+
 #         tts_pipeline.set_ref_audio(save_path)
 #     except Exception as e:
 #         return JSONResponse(status_code=400, content={"message": f"set refer audio failed", "Exception": str(e)})
@@ -481,8 +493,41 @@ async def echo():
     return JSONResponse(status_code=200, content={"message": "success"})
 
 
+@APP.get("/upload_by_url")
+async def upload_by_url(
+        file_url: str,
+        target_path: str,
+        replace: bool = False
+):
+    
+    will_download = True
+    if os.path.exists(target_path):   
+        will_download = False      
+        if replace:
+            os.remove(target_path)
+            will_download = True
+    
+    print(f"will_download: {will_download}")
+    if will_download:        
+        try:
+            path = os.path.dirname(target_path)
+            os.makedirs(path, exist_ok=True)
+
+            response = requests.get(file_url)
+            if response.status_code == 200:
+                with open(target_path, "wb") as f:
+                    f.write(response.content)
+            else:
+                return JSONResponse({"code":-1, "content":{"message": f"upload by url failed", "Exception": response.text}})
+        except Exception as e:
+            return JSONResponse({"code":-1, "content":{"message": f"upload by url failed", "Exception": str(e)}})
+
+    return JSONResponse({"code":0, "content":{"message": "success"}})
+
+
 if __name__ == "__main__":
     import uvicorn
+
     try:
         uvicorn.run(app=APP, host=host, port=port, workers=1)
     except Exception as e:
